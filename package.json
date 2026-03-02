@@ -1,0 +1,23 @@
+{
+  "name": "reverse-ssh-tunnel",
+  "version": "1.0.0",
+  "main": "src/main/index.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "NODE_ENV=development electron .",
+    "rebuild": "electron-rebuild",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "Reverse SSH Tunnel Manager with Secure Encryption",
+  "dependencies": {
+    "better-sqlite3": "^12.6.2",
+    "electron": "^40.6.1"
+  },
+  "devDependencies": {
+    "electron-rebuild": "^3.2.9",
+    "electron-reload": "^2.0.0-alpha.1"
+  }
+}

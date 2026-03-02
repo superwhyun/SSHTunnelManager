@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com; style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com;">
+  <title>Reverse SSH Tunnel Manager</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            gray: {
+              750: '#2d3748',
+              850: '#1a202c',
+              950: '#0d1117',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    /* Custom scrollbar */
+    ::-webkit-scrollbar {
+      width: 8px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #1a202c;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #4a5568;
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #718096;
+    }
+  </style>
+</head>
+<body class="bg-gray-950 text-gray-100 h-screen overflow-hidden">
+  <!-- Master Key Setup Modal -->
+  <div id="masterKeyModal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
+    <div class="bg-gray-850 border border-gray-700 rounded-xl p-8 w-full max-w-md shadow-2xl">
+      <div class="flex items-center gap-3 mb-6">
+        <div class="w-12 h-12 bg-blue-600 rounded-xl flex items-center justify-center text-2xl">🔐</div>
+        <div>
+          <h2 class="text-xl font-bold text-white">Secure Storage Setup</h2>
+          <p class="text-gray-400 text-sm">Initialize encryption for your SSH credentials</p>
+        </div>
+      </div>
+      
+      <div class="bg-blue-900/20 border border-blue-700/30 rounded-lg p-4 mb-6">
+        <p class="text-blue-200 text-sm">
+          This master key will encrypt all your SSH passwords and passphrases. 
+          It is stored only in memory and never saved to disk.
+        </p>
+      </div>
+      
+      <div class="space-y-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-300 mb-2">Master Password</label>
+          <input 
+            type="password" 
+            id="masterKeyInput" 
+            class="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
+            placeholder="Enter a strong passphrase (min 8 chars)"
+            autocomplete="off"
+          >
+        </div>
+        
+        <div>
+          <label class="block text-sm font-medium text-gray-300 mb-2">Confirm Password</label>
+          <input 
+            type="password" 
+            id="confirmKeyInput" 
+            class="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
+            placeholder="Confirm your passphrase"
+            autocomplete="off"
+          >
+        </div>
+      </div>
+      
+      <div id="setupError" class="mt-4 p-3 bg-red-900/30 border border-red-700/50 rounded-lg text-red-300 text-sm hidden"></div>
+      <div id="setupSuccess" class="mt-4 p-3 bg-green-900/30 border border-green-700/50 rounded-lg text-green-300 text-sm hidden"></div>
+      
+      <button 
+        id="setupBtn" 
+        class="w-full mt-6 bg-blue-600 hover:bg-blue-500 text-white font-semibold py-3 rounded-lg transition flex items-center justify-center gap-2"
+      >
+        <span>Initialize Secure Storage</span>
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- Main Application Layout -->
+  <div class="flex h-full">
+    <!-- Sidebar -->
+    <aside class="w-72 bg-gray-900 border-r border-gray-800 flex flex-col">
+      <!-- Header -->
+      <div class="p-4 border-b border-gray-800">
+        <div class="flex items-center gap-2 mb-3">
+          <div class="w-8 h-8 bg-gradient-to-br from-blue-500 to-teal-400 rounded-lg flex items-center justify-center">
+            <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+            </svg>
+          </div>
+          <h1 class="font-bold text-lg">SSH Tunnel</h1>
+        </div>
+        <button 
+          id="btnAddTunnel" 
+          class="w-full bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium py-2 px-4 rounded-lg transition flex items-center justify-center gap-2"
+        >
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+          </svg>
+          New Tunnel
+        </button>
+      </div>
+      
+      <!-- Tunnel List -->
+      <div id="tunnelList" class="flex-1 overflow-y-auto p-2 space-y-1">
+        <!-- Tunnel items will be injected here -->
+        <div class="text-center text-gray-500 py-8 text-sm">No tunnels configured</div>
+      </div>
+      
+      <!-- Footer -->
+      <div class="p-3 border-t border-gray-800 text-xs text-gray-500 text-center">
+        v1.0.0 • Secure Tunnel Manager
+      </div>
+    </aside>
+
+    <!-- Main Panel -->
+    <main id="mainPanel" class="flex-1 bg-gray-950 flex flex-col">
+      <!-- Empty State -->
+      <div id="emptyState" class="flex-1 flex items-center justify-center">
+        <div class="text-center">
+          <div class="w-20 h-20 bg-gray-800 rounded-2xl flex items-center justify-center mx-auto mb-4">
+            <svg class="w-10 h-10 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+            </svg>
+          </div>
+          <h3 class="text-xl font-semibold text-gray-300 mb-2">No Tunnel Selected</h3>
+          <p class="text-gray-500">Select a tunnel from the sidebar or create a new one</p>
+        </div>
+      </div>
+
+      <!-- Detail View (hidden by default) -->
+      <div id="detailView" class="hidden flex-1 flex flex-col">
+        <!-- Detail Header -->
+        <div class="p-6 border-b border-gray-800 flex items-center justify-between">
+          <div>
+            <h2 id="detailName" class="text-2xl font-bold text-white">Tunnel Name</h2>
+            <div class="flex items-center gap-2 mt-1">
+              <span id="detailStatus" class="flex items-center gap-1 text-sm">
+                <span class="w-2 h-2 rounded-full bg-gray-500"></span>
+                <span class="text-gray-400">Disconnected</span>
+              </span>
+              <span class="text-gray-600">•</span>
+              <span id="detailHost" class="text-sm text-gray-500">user@host:22</span>
+            </div>
+          </div>
+          <div class="flex items-center gap-2">
+            <button id="btnConnect" class="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded-lg font-medium transition flex items-center gap-2">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+              </svg>
+              Connect
+            </button>
+            <button id="btnEdit" class="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg font-medium transition">
+              Edit
+            </button>
+            <button id="btnDelete" class="bg-red-600/20 hover:bg-red-600/30 text-red-400 px-4 py-2 rounded-lg font-medium transition">
+              Delete
+            </button>
+          </div>
+        </div>
+
+        <!-- Detail Content -->
+        <div class="flex-1 p-6 grid grid-cols-2 gap-6">
+          <!-- Configuration -->
+          <div class="bg-gray-900 rounded-xl p-5 border border-gray-800">
+            <h3 class="font-semibold text-gray-300 mb-4 flex items-center gap-2">
+              <svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+              </svg>
+              Configuration
+            </h3>
+            <div class="space-y-3 text-sm">
+              <div class="flex justify-between">
+                <span class="text-gray-500">Remote Host</span>
+                <span id="cfgHost" class="text-gray-300 font-mono">example.com</span>
+              </div>
+              <div class="flex justify-between">
+                <span class="text-gray-500">SSH Port</span>
+                <span id="cfgPort" class="text-gray-300 font-mono">22</span>
+              </div>
+              <div class="flex justify-between">
+                <span class="text-gray-500">Username</span>
+                <span id="cfgUsername" class="text-gray-300">root</span>
+              </div>
+              <div class="flex justify-between">
+                <span class="text-gray-500">Auth Method</span>
+                <span id="cfgAuth" class="text-gray-300">Password</span>
+              </div>
+              <div class="border-t border-gray-800 pt-3 mt-3">
+                <div class="flex justify-between">
+                  <span class="text-gray-500">Local Port</span>
+                  <span id="cfgLocalPort" class="text-blue-400 font-mono font-semibold">8080</span>
+                </div>
+                <div class="flex justify-between mt-2">
+                  <span class="text-gray-500">Target</span>
+                  <span id="cfgTarget" class="text-gray-300 font-mono">localhost:3000</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Logs -->
+          <div class="bg-gray-900 rounded-xl border border-gray-800 flex flex-col">
+            <div class="p-4 border-b border-gray-800 flex items-center justify-between">
+              <h3 class="font-semibold text-gray-300 flex items-center gap-2">
+                <svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                </svg>
+                Connection Logs
+              </h3>
+              <button id="btnClearLogs" class="text-xs text-gray-500 hover:text-gray-300">Clear</button>
+            </div>
+            <div id="logContainer" class="flex-1 p-4 font-mono text-xs overflow-y-auto space-y-1 max-h-80">
+              <div class="text-gray-500 italic">No logs available...</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Form View (hidden by default) -->
+      <div id="formView" class="hidden flex-1 overflow-y-auto p-6">
+        <div class="max-w-2xl mx-auto">
+          <h2 id="formTitle" class="text-2xl font-bold mb-6">New Tunnel</h2>
+          
+          <form id="tunnelForm" class="space-y-6">
+            <!-- Name -->
+            <div>
+              <label class="block text-sm font-medium text-gray-300 mb-2">Tunnel Name</label>
+              <input type="text" id="formName" required
+                class="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-blue-500 transition"
+                placeholder="My Production Server">
+            </div>
+
+            <!-- SSH Connection -->
+            <div class="bg-gray-900 rounded-xl p-5 border border-gray-800">
+              <h3 class="font-semibold text-gray-300 mb-4">SSH Connection</h3>
+              <div class="grid grid-cols-2 gap-4">
+                <div class="col-span-2">
+                  <label class="block text-sm font-medium text-gray-300 mb-2">Host</label>
+                  <input type="text" id="formHost" required
+                    class="w-full bg-gray-950 border border-gray-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-blue-500 transition"
+                    placeholder="example.com or 192.168.1.1">
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-300 mb-2">SSH Port</label>
+                  <input type="number" id="formSshPort" value="22" required
+                    class="w-full bg-gray-950 border border-gray-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-blue-500 transition">
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-300 mb-2">Username</label>
+                  <input type="text" id="formUsername" required
+                    class="w-full bg-gray-950 border border-gray-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-blue-500 transition"
+                    placeholder="root">
+                </div>
+              </div>
+
+              <!-- Auth Type -->
+              <div class="mt-4">
+                <label class="block text-sm font-medium text-gray-300 mb-2">Authentication</label>
+                <div class="flex gap-4">
+                  <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="radio" name="authType" value="password" checked class="text-blue-600">
+                    <span class="text-sm">Password</span>
+                  </label>
+                  <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="radio" name="authType" value="key" class="text-blue-600">
+                    <span class="text-sm">SSH Key</span>
+                  </label>
+                </div>
+              </div>
+
+              <!-- Password Input -->
+              <div id="passwordField" class="mt-4">
+                <label class="block text-sm font-medium text-gray-300 mb-2">Password</label>
+                <input type="password" id="formPassword"
+                  class="w-full bg-gray-950 border border-gray-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-blue-500 transition"
+                  placeholder="SSH password">
+              </div>
+
+              <!-- Key Input -->
+              <div id="keyField" class="mt-4 hidden">
+                <label class="block text-sm font-medium text-gray-300 mb-2">Private Key Path</label>
+                <div class="flex gap-2">
+                  <input type="text" id="formKeyPath" readonly
+                    class="flex-1 bg-gray-950 border border-gray-700 rounded-lg px-4 py-2 text-white"
+                    placeholder="~/.ssh/id_rsa">
+                  <button type="button" id="btnBrowseKey" class="bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded-lg text-sm">Browse</button>
+                </div>
+                <div class="mt-3">
+                  <label class="block text-sm font-medium text-gray-300 mb-2">Key Passphrase (optional)</label>
+                  <input type="password" id="formKeyPassphrase"
+                    class="w-full bg-gray-950 border border-gray-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-blue-500 transition"
+                    placeholder="Passphrase if key is encrypted">
+                </div>
+              </div>
+            </div>
+
+            <!-- Tunnel Configuration -->
+            <div class="bg-gray-900 rounded-xl p-5 border border-gray-800">
+              <h3 class="font-semibold text-gray-300 mb-4">Tunnel Configuration</h3>
+              <div class="grid grid-cols-2 gap-4">
+                <div>
+                  <label class="block text-sm font-medium text-gray-300 mb-2">Local Port</label>
+                  <input type="number" id="formLocalPort" required
+                    class="w-full bg-gray-950 border border-gray-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-blue-500 transition"
+                    placeholder="8080">
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-300 mb-2">Target Host</label>
+                  <input type="text" id="formTargetHost" value="localhost" required
+                    class="w-full bg-gray-950 border border-gray-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-blue-500 transition">
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-300 mb-2">Target Port</label>
+                  <input type="number" id="formTargetPort" required
+                    class="w-full bg-gray-950 border border-gray-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-blue-500 transition"
+                    placeholder="3000">
+                </div>
+              </div>
+            </div>
+
+            <!-- Options -->
+            <div class="flex items-center gap-4">
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" id="formAutoStart" class="text-blue-600 rounded">
+                <span class="text-sm text-gray-300">Auto-start on launch</span>
+              </label>
+            </div>
+
+            <!-- Actions -->
+            <div class="flex gap-3 pt-4">
+              <button type="submit" class="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-semibold py-3 rounded-lg transition">
+                Save Tunnel
+              </button>
+              <button type="button" id="btnCancel" class="px-6 bg-gray-700 hover:bg-gray-600 text-white font-semibold py-3 rounded-lg transition">
+                Cancel
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
