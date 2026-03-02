@@ -13,7 +13,7 @@ class App {
 
   async init() {
     console.log('[App] Initializing...');
-    
+
     // Check master key
     const hasKey = await window.electronAPI.hasMasterKey();
     if (!hasKey) {
@@ -21,7 +21,7 @@ class App {
     } else {
       this.hideMasterKeyModal();
       await this.loadTunnels();
-      
+
       // Sync with existing SSH connections from main process
       await this.syncWithMainProcess();
     }
@@ -37,16 +37,31 @@ class App {
       const result = await window.electronAPI.getActiveConnections();
       const connections = result.connections || [];
       console.log('[App] Active connections from main:', connections);
-      
+
       for (const conn of connections) {
         this.tunnelStatuses.set(conn.id, conn.status);
+
         // Update tunnel in list
         const tunnel = this.tunnels.find(t => t.id === conn.id);
         if (tunnel) {
           tunnel.status = conn.status;
         }
+
+        // Fetch existing logs for this connection
+        try {
+          const tunnelLogsResponse = await window.electronAPI.getTunnelLogs(conn.id, 100);
+          if (tunnelLogsResponse && tunnelLogsResponse.logs) {
+            this.tunnelLogs.set(conn.id, tunnelLogsResponse.logs.map(log => ({
+              time: new Date(log.time),
+              message: log.data,
+              type: log.isError ? 'error' : 'info' // ssh-manager now stores isError boolean
+            })));
+          }
+        } catch (err) {
+          console.error(`[App] Failed to fetch logs for tunnel ${conn.id}`, err);
+        }
       }
-      
+
       this.renderTunnelList();
     } catch (error) {
       console.error('[App] Failed to sync with main process:', error);
@@ -87,7 +102,7 @@ class App {
       await window.electronAPI.setMasterKey(key);
       successDiv.textContent = 'Secure storage initialized successfully!';
       successDiv.classList.remove('hidden');
-      
+
       setTimeout(() => {
         this.hideMasterKeyModal();
         this.loadTunnels();
@@ -110,7 +125,7 @@ class App {
 
   renderTunnelList() {
     const list = document.getElementById('tunnelList');
-    
+
     if (this.tunnels.length === 0) {
       list.innerHTML = '<div class="text-center text-gray-500 py-8 text-sm">No tunnels configured</div>';
       return;
@@ -153,7 +168,7 @@ class App {
   async selectTunnel(id) {
     this.selectedTunnelId = id;
     this.renderTunnelList();
-    
+
     const tunnel = this.tunnels.find(t => t.id === id);
     if (tunnel) {
       this.showDetailView(tunnel);
@@ -175,11 +190,11 @@ class App {
     // Fill details
     document.getElementById('detailName').textContent = tunnel.name;
     document.getElementById('detailHost').textContent = `${tunnel.username}@${tunnel.host}:${tunnel.port}`;
-    
+
     // Get current status from status map or default to disconnected
     const status = this.tunnelStatuses.get(tunnel.id) || tunnel.status || 'disconnected';
     const color = this.getStatusColor(status);
-    
+
     const statusEl = document.getElementById('detailStatus');
     statusEl.innerHTML = `
       <span class="w-2 h-2 rounded-full ${color}"></span>
@@ -198,7 +213,7 @@ class App {
     document.getElementById('cfgAuth').textContent = tunnel.auth_type === 'password' ? 'Password' : 'SSH Key';
     document.getElementById('cfgLocalPort').textContent = tunnel.local_port;
     document.getElementById('cfgTarget').textContent = `${tunnel.target_host}:${tunnel.target_port}`;
-    
+
     // Load existing logs for this tunnel
     this.loadTunnelLogs(tunnel.id);
   }
@@ -207,12 +222,12 @@ class App {
   loadTunnelLogs(id) {
     const container = document.getElementById('logContainer');
     const logs = this.tunnelLogs.get(id) || [];
-    
+
     if (logs.length === 0) {
       container.innerHTML = '<div class="text-gray-500 italic">No logs available...</div>';
       return;
     }
-    
+
     container.innerHTML = '';
     logs.forEach(log => {
       const time = log.time.toLocaleTimeString();
@@ -231,7 +246,7 @@ class App {
     document.getElementById('formView').classList.remove('hidden');
 
     document.getElementById('formTitle').textContent = editMode ? 'Edit Tunnel' : 'New Tunnel';
-    
+
     if (!editMode) {
       document.getElementById('tunnelForm').reset();
       document.getElementById('formSshPort').value = '22';
@@ -304,7 +319,7 @@ class App {
     // Connect/Disconnect
     document.getElementById('btnConnect').addEventListener('click', () => {
       if (!this.selectedTunnelId) return;
-      
+
       const status = this.tunnelStatuses.get(this.selectedTunnelId);
       if (status === 'connected') {
         this.onTunnelDisconnect(this.selectedTunnelId);
@@ -328,7 +343,7 @@ class App {
 
     // Track which tunnels were connected before sleep
     this.preSleepStatuses = new Map();
-    
+
     // Handle sleep/wake - reconnect if needed
     document.addEventListener('visibilitychange', async () => {
       if (document.visibilityState === 'hidden') {
@@ -341,7 +356,7 @@ class App {
         for (const tunnel of this.tunnels) {
           const currentStatus = this.tunnelStatuses.get(tunnel.id);
           const wasConnected = this.preSleepStatuses.get(tunnel.id) === 'connected';
-          
+
           // Only reconnect if: was connected before sleep AND now disconnected
           if (wasConnected && currentStatus === 'disconnected') {
             console.log(`[App] Reconnecting ${tunnel.id} (was connected before sleep)`);
@@ -374,19 +389,19 @@ class App {
   handleTunnelStatusUpdate(data) {
     console.log('[App] Status update received:', data);
     const { id, status, error } = data;
-    
+
     // Update status map
     this.tunnelStatuses.set(id, status);
-    
+
     // Update tunnel in list
     const tunnel = this.tunnels.find(t => t.id === id);
     if (tunnel) {
       tunnel.status = status;
     }
-    
+
     // Re-render list to show status change
     this.renderTunnelList();
-    
+
     // Update detail view if this tunnel is selected
     if (this.selectedTunnelId === id) {
       const statusEl = document.getElementById('detailStatus');
@@ -397,10 +412,10 @@ class App {
           ${status.charAt(0).toUpperCase() + status.slice(1)}
         </span>
       `;
-      
+
       // Update connect button
       this.updateConnectButton(status);
-      
+
       // Status change is already logged by ssh-manager.js
     }
   }
@@ -408,22 +423,22 @@ class App {
   // Update connect button based on status
   updateConnectButton(status) {
     const btn = document.getElementById('btnConnect');
-    const statusText = status === 'connected' ? 'Disconnect' : 
-                       status === 'connecting' ? 'Connecting...' : 
-                       status === 'error' ? 'Retry' : 'Connect';
-    
+    const statusText = status === 'connected' ? 'Disconnect' :
+      status === 'connecting' ? 'Connecting...' :
+        status === 'error' ? 'Retry' : 'Connect';
+
     // Update button color
     btn.className = this.getConnectButtonClass(status);
-    
+
     // Update button text and icon
-    const icon = status === 'connected' ? 
+    const icon = status === 'connected' ?
       `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
       </svg>` :
       `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
       </svg>`;
-    
+
     btn.innerHTML = `${icon} ${statusText}`;
   }
 
@@ -448,13 +463,13 @@ class App {
       this.addLog('Initiating SSH connection...', 'info');
       this.tunnelStatuses.set(id, 'connecting');
       this.renderTunnelList();
-      
+
       if (this.selectedTunnelId === id) {
         this.updateConnectButton('connecting');
       }
-      
+
       const result = await window.electronAPI.connectTunnel(id);
-      
+
       if (result.success) {
         this.addLog('SSH connection established', 'success');
       } else {
@@ -475,9 +490,9 @@ class App {
   async onTunnelDisconnect(id) {
     try {
       this.addLog('Disconnecting...', 'info');
-      
+
       const result = await window.electronAPI.disconnectTunnel(id);
-      
+
       if (result.success) {
         this.addLog('Disconnected successfully', 'success');
       } else {
@@ -523,7 +538,7 @@ class App {
 
   async saveTunnel() {
     const authType = document.querySelector('input[name="authType"]:checked').value;
-    
+
     const data = {
       name: document.getElementById('formName').value,
       host: document.getElementById('formHost').value,
@@ -561,7 +576,7 @@ class App {
     const container = document.getElementById('logContainer');
     const time = new Date().toLocaleTimeString();
     const color = type === 'error' ? 'text-red-400' : type === 'success' ? 'text-green-400' : 'text-gray-400';
-    
+
     if (container.children.length === 1 && container.children[0].classList.contains('italic')) {
       container.innerHTML = '';
     }

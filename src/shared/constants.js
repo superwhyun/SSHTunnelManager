@@ -10,17 +10,18 @@ const IPC_CHANNELS = {
   DB_TUNNEL_GET: 'db:tunnel:get',
   DB_TUNNEL_UPDATE: 'db:tunnel:update',
   DB_TUNNEL_DELETE: 'db:tunnel:delete',
-  
+
   // Crypto operations
   CRYPTO_SET_MASTER_KEY: 'crypto:setMasterKey',
   CRYPTO_HAS_MASTER_KEY: 'crypto:hasMasterKey',
-  
+
   // SSH Tunnel operations
   SSH_CONNECT: 'ssh:connect',
   SSH_DISCONNECT: 'ssh:disconnect',
   SSH_STATUS: 'ssh:status',
   SSH_LOGS: 'ssh:logs',
-  
+  SSH_ACTIVE_CONNECTIONS: 'ssh:activeConnections',
+
   // Events from main to renderer
   TUNNEL_STATUS: 'tunnel:status',
   TUNNEL_LOG: 'tunnel:log',
