@@ -1,4 +1,4 @@
-# Reverse SSH Tunnel Manager - 설계 고려사항
+# SSH Tunnel Manager - 설계 고려사항
 
 > 작성일: 2026-03-01  
 > 목적: 구현 전 설계 단계에서 고려해야 할 기술적/UX적 결정사항 정리

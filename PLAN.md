@@ -1,7 +1,7 @@
-# Reverse SSH Tunnel Manager - 개발 계획
+# SSH Tunnel Manager - 개발 계획
 
 > 생성일: 2026-03-01  
-> 목표: 크로스 플랫폼 Reverse SSH Tunnel 관리 앱 개발
+> 목표: 크로스 플랫폼 SSH Tunnel 관리 앱 개발
 
 ---
 

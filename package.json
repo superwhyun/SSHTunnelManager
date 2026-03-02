@@ -1,5 +1,5 @@
 {
-  "name": "reverse-ssh-tunnel",
+  "name": "ssh-tunnel-manager",
   "version": "1.0.0",
   "main": "src/main/index.js",
   "scripts": {
@@ -11,7 +11,7 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "description": "Reverse SSH Tunnel Manager with Secure Encryption",
+  "description": "SSH Tunnel Manager with Secure Encryption",
   "dependencies": {
     "better-sqlite3": "^12.6.2",
     "electron": "^40.6.1"
