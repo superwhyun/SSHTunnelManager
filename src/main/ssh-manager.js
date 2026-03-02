@@ -29,7 +29,9 @@ class SSHManager extends EventEmitter {
     super();
     this.tunnels = new Map();
     this.sshPath = process.platform === 'win32'
-      ? 'C:\\Windows\\System32\\OpenSSH\\ssh.exe'
+      ? (require('fs').existsSync('C:\\Windows\\System32\\OpenSSH\\ssh.exe')
+        ? 'C:\\Windows\\System32\\OpenSSH\\ssh.exe'
+        : 'ssh')
       : 'ssh';
     this.mainWindowRef = mainWindow;
     this.MAX_RECONNECT_ATTEMPTS = 5;
@@ -197,12 +199,12 @@ class SSHManager extends EventEmitter {
     this.tunnels.delete(tunnelId);
   }
 
-  _forceKill(process, pid) {
+  _forceKill(sshProcess, pid) {
     try {
       if (process.platform === 'win32') {
         spawn('taskkill', ['/pid', pid, '/f', '/t']);
       } else {
-        process.kill(-pid, 'SIGKILL');
+        sshProcess.kill(-pid, 'SIGKILL');
       }
     } catch (error) {
       console.error('Force kill failed:', error);
@@ -231,7 +233,11 @@ class SSHManager extends EventEmitter {
     args.push('-o', 'ServerAliveCountMax=3');
     args.push('-o', 'ExitOnForwardFailure=yes');
     args.push('-o', 'StrictHostKeyChecking=no');
-    args.push('-o', 'UserKnownHostsFile=/dev/null');
+
+    // OS dependent null path
+    const nullPath = process.platform === 'win32' ? 'NUL' : '/dev/null';
+    args.push('-o', `UserKnownHostsFile=${nullPath}`);
+
     args.push(`${username}@${host}`);
 
     return args;
