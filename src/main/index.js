@@ -1,6 +1,6 @@
 /**
  * Main Process Entry Point
- * Electron main process initialization
+ * Electron main process initialization with System Tray support
  */
 
 const { app, BrowserWindow } = require('electron');
@@ -8,6 +8,7 @@ const path = require('path');
 const database = require('./database');
 const { registerIpcHandlers, unregisterIpcHandlers, setSSHManager } = require('./ipc-handlers');
 const { SSHManager } = require('./ssh-manager');
+const { TrayManager } = require('./tray-manager');
 
 // Hot reload for development (disabled due to compatibility issues)
 if (process.env.NODE_ENV === 'development') {
@@ -20,6 +21,11 @@ if (process.env.NODE_ENV === 'development') {
 // Global references
 let mainWindow = null;
 let sshManager = null;
+let trayManager = null;
+
+// Platform detection
+const isMac = process.platform === 'darwin';
+const isWindows = process.platform === 'win32';
 
 /**
  * Create main application window
@@ -39,6 +45,8 @@ function createWindow() {
     },
     show: false, // Don't show until ready-to-show
     titleBarStyle: 'default',
+    // macOS: Hide dock icon initially if we want tray-only mode
+    // skipTaskbar: false, // Show in taskbar/dock
   });
 
   // Load renderer HTML
@@ -49,15 +57,24 @@ function createWindow() {
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
     
+    // macOS: Show dock icon when window is shown
+    if (isMac) {
+      app.dock.show();
+    }
+    
     // Uncomment to auto-open DevTools in development
     // if (process.env.NODE_ENV === 'development') {
     //   mainWindow.webContents.openDevTools();
     // }
   });
 
-  // Handle window closed
+  // Handle window close - now managed by TrayManager
+  // Don't set mainWindow to null here, let TrayManager handle it
   mainWindow.on('closed', () => {
-    mainWindow = null;
+    // Only nullify if we're actually quitting
+    if (!trayManager || trayManager.isQuitting) {
+      mainWindow = null;
+    }
   });
 
   // Handle new window requests (security)
@@ -80,6 +97,12 @@ function initialize() {
     sshManager = new SSHManager(mainWindow);
     setSSHManager(sshManager);
     
+    // Create Tray Manager (handles tray icon and window behavior)
+    trayManager = new TrayManager(mainWindow, sshManager);
+    
+    // Update SSH Manager's mainWindow reference for tray updates
+    sshManager.setMainWindow(mainWindow);
+    
     // Register IPC handlers
     registerIpcHandlers();
     
@@ -94,10 +117,21 @@ function initialize() {
  * Cleanup before quit
  */
 function cleanup() {
+  // Mark as quitting so tray manager knows
+  if (trayManager) {
+    trayManager.isQuitting = true;
+  }
+  
   // Disconnect all SSH tunnels
   if (sshManager) {
     sshManager.disconnectAll();
     sshManager = null;
+  }
+  
+  // Destroy tray
+  if (trayManager) {
+    trayManager.destroy();
+    trayManager = null;
   }
   
   unregisterIpcHandlers();
@@ -118,26 +152,40 @@ app.whenReady().then(() => {
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();
+    } else if (mainWindow && trayManager) {
+      // Show existing window
+      trayManager.showWindow();
     }
   });
 });
 
 // All windows closed
 app.on('window-all-closed', () => {
-  // macOS: Keep app running unless Cmd+Q pressed
-  if (process.platform !== 'darwin') {
-    app.quit();
+  // macOS: Keep app running in background (tray icon remains)
+  // unless Cmd+Q was pressed (isQuitting flag)
+  if (isMac) {
+    if (!trayManager || trayManager.isQuitting) {
+      app.quit();
+    }
+    // Otherwise, keep running with tray icon
+  } else {
+    // Windows/Linux: Quit when window is closed (unless tray is active)
+    if (!trayManager || trayManager.isQuitting) {
+      app.quit();
+    }
   }
 });
 
 // App will quit
-app.on('will-quit', () => {
+app.on('will-quit', (event) => {
   cleanup();
 });
 
 // App before quit
 app.on('before-quit', () => {
-  cleanup();
+  if (trayManager) {
+    trayManager.isQuitting = true;
+  }
 });
 
 // Security: Prevent new window creation
@@ -167,7 +215,15 @@ if (!gotTheLock) {
       if (mainWindow.isMinimized()) {
         mainWindow.restore();
       }
+      if (!mainWindow.isVisible()) {
+        mainWindow.show();
+      }
       mainWindow.focus();
     }
   });
 }
+
+// Export for IPC handlers that need to update tray
+module.exports = {
+  getTrayManager: () => trayManager,
+};

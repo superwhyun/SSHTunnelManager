@@ -3,13 +3,19 @@
  * Registers all IPC handlers for renderer process communication
  */
 
-const { ipcMain } = require('electron');
+const { ipcMain, BrowserWindow, shell } = require('electron');
 const crypto = require('./crypto');
 const database = require('./database');
 const { IPC_CHANNELS } = require('../shared/constants');
 
 // SSH Manager instance (set during initialization)
 let sshManager = null;
+
+// Get main window helper
+function getMainWindow() {
+  const windows = BrowserWindow.getAllWindows();
+  return windows.length > 0 ? windows[0] : null;
+}
 
 /**
  * Set SSH Manager instance for IPC handlers
@@ -122,6 +128,7 @@ function registerIpcHandlers() {
       console.log('[IPC] DB private_key_path:', tunnel.private_key_path);
       
       const config = {
+        name: tunnel.name,
         host: tunnel.host,
         port: tunnel.port,
         username: tunnel.username,
@@ -211,7 +218,80 @@ function registerIpcHandlers() {
     }
   });
 
+  // Tray: Get all tunnels for auto-connect (tray menu)
+  ipcMain.handle('tray:get-tunnels', async () => {
+    try {
+      const tunnels = database.getAllTunnels(true);
+      return { tunnels };
+    } catch (error) {
+      console.error('Error getting tunnels for tray:', error);
+      throw error;
+    }
+  });
+
+  // Tray: Show window
+  ipcMain.handle('tray:show-window', async () => {
+    try {
+      const mainWindow = getMainWindow();
+      if (mainWindow) {
+        if (mainWindow.isMinimized()) {
+          mainWindow.restore();
+        }
+        mainWindow.show();
+        mainWindow.focus();
+        
+        // macOS: Show dock icon
+        if (process.platform === 'darwin') {
+          const { app } = require('electron');
+          app.dock.show();
+        }
+      }
+      return { success: true };
+    } catch (error) {
+      console.error('Error showing window:', error);
+      throw error;
+    }
+  });
+
+  // Setup tray listeners
+  setupTrayListeners();
+
   console.log('IPC handlers registered');
+}
+
+// Tray event handlers (sent from main to renderer)
+function setupTrayListeners() {
+  // Listen for tray:connect-all from tray manager
+  ipcMain.on('tray-action', (event, action, data) => {
+    const mainWindow = getMainWindow();
+    if (!mainWindow) return;
+
+    switch (action) {
+      case 'connect-all':
+        mainWindow.webContents.send('tray:connect-all');
+        break;
+      case 'select-tunnel':
+        mainWindow.webContents.send('tray:select-tunnel', data);
+        break;
+      case 'disconnect-all':
+        // Handle directly via SSH manager
+        if (sshManager) {
+          sshManager.disconnectAll();
+        }
+        break;
+    }
+  });
+
+  // Open external URL
+  ipcMain.handle('shell:openExternal', async (event, url) => {
+    try {
+      await shell.openExternal(url);
+      return { success: true };
+    } catch (error) {
+      console.error('Error opening external URL:', error);
+      throw error;
+    }
+  });
 }
 
 /**

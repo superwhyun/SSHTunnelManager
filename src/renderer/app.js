@@ -213,6 +213,23 @@ class App {
     document.getElementById('cfgAuth').textContent = tunnel.auth_type === 'password' ? 'Password' : 'SSH Key';
     document.getElementById('cfgLocalPort').textContent = tunnel.local_port;
     document.getElementById('cfgTarget').textContent = `${tunnel.target_host}:${tunnel.target_port}`;
+    
+    // URL
+    const urlEl = document.getElementById('cfgUrl');
+    if (tunnel.url) {
+      urlEl.textContent = tunnel.url;
+      urlEl.href = '#';
+      urlEl.onclick = (e) => {
+        e.preventDefault();
+        window.electronAPI.openExternal(tunnel.url);
+      };
+      urlEl.classList.remove('hidden');
+    } else {
+      urlEl.textContent = '-';
+      urlEl.href = '#';
+      urlEl.onclick = null;
+      urlEl.classList.remove('hidden');
+    }
 
     // Load existing logs for this tunnel
     this.loadTunnelLogs(tunnel.id);
@@ -251,6 +268,16 @@ class App {
       document.getElementById('tunnelForm').reset();
       document.getElementById('formSshPort').value = '22';
       document.getElementById('formTargetHost').value = 'localhost';
+      document.getElementById('formUrl').value = '';
+      
+      // Default to password auth, hide SSH key helper
+      document.querySelector('input[name="authType"][value="password"]').checked = true;
+      document.getElementById('passwordField').classList.remove('hidden');
+      document.getElementById('keyField').classList.add('hidden');
+      document.getElementById('sshKeyHelper').classList.add('hidden');
+      
+      // Update SSH copy ID command with defaults
+      this.updateSshCopyIdCommand();
     }
   }
 
@@ -274,7 +301,19 @@ class App {
         const isPassword = e.target.value === 'password';
         document.getElementById('passwordField').classList.toggle('hidden', !isPassword);
         document.getElementById('keyField').classList.toggle('hidden', isPassword);
+        document.getElementById('sshKeyHelper').classList.toggle('hidden', isPassword);
       });
+    });
+
+    // SSH Copy ID command update on input change
+    const sshInputs = ['formHost', 'formSshPort', 'formUsername'];
+    sshInputs.forEach(id => {
+      document.getElementById(id).addEventListener('input', () => this.updateSshCopyIdCommand());
+    });
+
+    // Copy SSH command to clipboard
+    document.getElementById('btnCopySshCommand').addEventListener('click', () => {
+      this.copySshCommandToClipboard();
     });
 
     // Form submit
@@ -383,6 +422,46 @@ class App {
         type: data.type
       });
     });
+
+    // Tray: Connect all request
+    window.electronAPI.onTrayConnectAll(async () => {
+      console.log('[App] Tray connect-all requested');
+      await this.connectAllAutoStartTunnels();
+    });
+
+    // Tray: Select tunnel request
+    window.electronAPI.onTraySelectTunnel((tunnelId) => {
+      console.log('[App] Tray select tunnel:', tunnelId);
+      this.selectTunnel(tunnelId);
+      // Show window
+      this.showWindow();
+    });
+  }
+
+  /**
+   * Connect all tunnels with auto_start enabled
+   */
+  async connectAllAutoStartTunnels() {
+    const autoStartTunnels = this.tunnels.filter(t => t.auto_start);
+    console.log(`[App] Connecting ${autoStartTunnels.length} auto-start tunnels`);
+    
+    for (const tunnel of autoStartTunnels) {
+      const status = this.tunnelStatuses.get(tunnel.id);
+      if (status !== 'connected' && status !== 'connecting') {
+        this.addLog(`Auto-connecting: ${tunnel.name}...`, 'info');
+        await this.onTunnelConnect(tunnel.id);
+        // Small delay between connections
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+    }
+  }
+
+  /**
+   * Show main window (called from tray)
+   */
+  showWindow() {
+    // This is handled by main process, but we can add any UI updates here
+    console.log('[App] Show window requested');
   }
 
   // Handle tunnel status updates from main process
@@ -518,17 +597,24 @@ class App {
       document.getElementById('formTargetPort').value = tunnel.target_port;
       document.getElementById('formAutoStart').checked = tunnel.auto_start;
 
+      // URL
+      document.getElementById('formUrl').value = tunnel.url || '';
+
       // Auth
       const authType = tunnel.auth_type || 'password';
       document.querySelector(`input[name="authType"][value="${authType}"]`).checked = true;
       document.getElementById('passwordField').classList.toggle('hidden', authType !== 'password');
       document.getElementById('keyField').classList.toggle('hidden', authType === 'password');
+      document.getElementById('sshKeyHelper').classList.toggle('hidden', authType !== 'key');
 
       if (authType === 'password') {
         document.getElementById('formPassword').value = ''; // Don't show encrypted
       } else {
         document.getElementById('formKeyPath').value = tunnel.private_key_path || '';
       }
+
+      // Update SSH copy ID command
+      this.updateSshCopyIdCommand();
 
       this.showFormView(true);
     } catch (error) {
@@ -548,6 +634,7 @@ class App {
       local_port: parseInt(document.getElementById('formLocalPort').value),
       target_host: document.getElementById('formTargetHost').value,
       target_port: parseInt(document.getElementById('formTargetPort').value),
+      url: document.getElementById('formUrl').value || null,
       auto_start: document.getElementById('formAutoStart').checked
     };
 
@@ -586,6 +673,71 @@ class App {
     div.innerHTML = `<span class="text-gray-600">[${time}]</span> ${message}`;
     container.appendChild(div);
     container.scrollTop = container.scrollHeight;
+  }
+
+  /**
+   * Update SSH copy ID command based on current form values
+   */
+  updateSshCopyIdCommand() {
+    const host = document.getElementById('formHost').value || 'example.com';
+    const port = document.getElementById('formSshPort').value || '22';
+    const username = document.getElementById('formUsername').value || 'user';
+    
+    const isWindows = navigator.platform.indexOf('Win') > -1;
+    
+    let command;
+    if (port === '22') {
+      command = `ssh-copy-id ${username}@${host}`;
+    } else {
+      command = `ssh-copy-id -p ${port} ${username}@${host}`;
+    }
+    
+    // Windows alternative command
+    if (isWindows) {
+      if (port === '22') {
+        command = `type %USERPROFILE%\\.ssh\\id_rsa.pub | ssh ${username}@${host} "cat >> .ssh/authorized_keys"`;
+      } else {
+        command = `type %USERPROFILE%\\.ssh\\id_rsa.pub | ssh -p ${port} ${username}@${host} "cat >> .ssh/authorized_keys"`;
+      }
+    }
+    
+    const cmdEl = document.getElementById('sshCopyIdCommand');
+    if (cmdEl) {
+      cmdEl.textContent = command;
+    }
+  }
+
+  /**
+   * Copy SSH command to clipboard
+   */
+  async copySshCommandToClipboard() {
+    const command = document.getElementById('sshCopyIdCommand').textContent;
+    
+    try {
+      await navigator.clipboard.writeText(command.trim());
+      
+      // Show feedback
+      const btn = document.getElementById('btnCopySshCommand');
+      const originalHTML = btn.innerHTML;
+      btn.innerHTML = `<svg class="w-4 h-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+      </svg>`;
+      
+      setTimeout(() => {
+        btn.innerHTML = originalHTML;
+      }, 2000);
+      
+      console.log('[App] SSH command copied to clipboard');
+    } catch (error) {
+      console.error('[App] Failed to copy:', error);
+      // Fallback
+      const textArea = document.createElement('textarea');
+      textArea.value = command.trim();
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textArea);
+    }
   }
 }
 

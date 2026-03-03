@@ -173,15 +173,13 @@ class SSHManager extends EventEmitter {
   getActiveConnections() {
     const connections = [];
     for (const [id, tunnel] of this.tunnels) {
-      if (tunnel.status === ConnectionStatus.CONNECTED ||
-        tunnel.status === ConnectionStatus.CONNECTING) {
-        connections.push({
-          id,
-          status: tunnel.status,
-          pid: tunnel.pid,
-          startTime: tunnel.startTime,
-        });
-      }
+      connections.push({
+        id,
+        name: tunnel.config?.name || id,
+        status: tunnel.status,
+        pid: tunnel.pid,
+        startTime: tunnel.startTime,
+      });
     }
     return connections;
   }

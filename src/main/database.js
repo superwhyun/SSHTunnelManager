@@ -61,6 +61,7 @@ function createTables() {
       target_host TEXT DEFAULT 'localhost',
       target_port INTEGER NOT NULL,
       remote_bind_port INTEGER,
+      url TEXT,
       auto_start BOOLEAN DEFAULT 0,
       reconnect BOOLEAN DEFAULT 1,
       created_at INTEGER DEFAULT (strftime('%s','now'))
@@ -72,6 +73,26 @@ function createTables() {
   // Create indexes for better query performance
   db.exec('CREATE INDEX IF NOT EXISTS idx_tunnels_name ON tunnels(name)');
   db.exec('CREATE INDEX IF NOT EXISTS idx_tunnels_auto_start ON tunnels(auto_start)');
+  
+  // Migration: Add url column if it doesn't exist (for existing databases)
+  migrateAddUrlColumn();
+}
+
+/**
+ * Migration: Add url column to existing tables
+ */
+function migrateAddUrlColumn() {
+  try {
+    const columns = db.prepare("PRAGMA table_info(tunnels)").all();
+    const hasUrlColumn = columns.some(col => col.name === 'url');
+    
+    if (!hasUrlColumn) {
+      db.exec('ALTER TABLE tunnels ADD COLUMN url TEXT');
+      console.log('[DB] Migration: Added url column to tunnels table');
+    }
+  } catch (error) {
+    console.error('[DB] Migration error:', error);
+  }
 }
 
 /**
@@ -105,6 +126,7 @@ function createTunnel(tunnelData) {
     target_host = 'localhost',
     target_port,
     remote_bind_port,
+    url,
     auto_start = 0,
     reconnect = 1,
   } = tunnelData;
@@ -125,8 +147,8 @@ function createTunnel(tunnelData) {
       id, name, host, port, username, auth_type,
       encrypted_password, private_key_path, encrypted_passphrase,
       local_port, target_host, target_port, remote_bind_port,
-      auto_start, reconnect
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      url, auto_start, reconnect
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   
   stmt.run(
@@ -143,6 +165,7 @@ function createTunnel(tunnelData) {
     target_host,
     target_port,
     remote_bind_port || null,
+    url || null,
     auto_start ? 1 : 0,
     reconnect ? 1 : 0
   );
@@ -208,7 +231,7 @@ function updateTunnel(id, updates) {
   const allowedFields = [
     'name', 'host', 'port', 'username', 'auth_type',
     'local_port', 'target_host', 'target_port', 'remote_bind_port',
-    'auto_start', 'reconnect', 'private_key_path'
+    'url', 'auto_start', 'reconnect', 'private_key_path'
   ];
   
   const setClauses = [];
@@ -288,6 +311,7 @@ function formatTunnel(tunnel, includeEncrypted = false) {
     target_host: tunnel.target_host,
     target_port: tunnel.target_port,
     remote_bind_port: tunnel.remote_bind_port,
+    url: tunnel.url,
     auto_start: Boolean(tunnel.auto_start),
     reconnect: Boolean(tunnel.reconnect),
     created_at: tunnel.created_at,

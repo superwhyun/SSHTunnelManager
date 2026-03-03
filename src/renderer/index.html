@@ -207,6 +207,10 @@
                 <span class="text-gray-500">Auth Method</span>
                 <span id="cfgAuth" class="text-gray-300">Password</span>
               </div>
+              <div class="flex justify-between">
+                <span class="text-gray-500">URL</span>
+                <a id="cfgUrl" href="#" class="text-blue-400 hover:text-blue-300 text-xs truncate max-w-[200px]" target="_blank">-</a>
+              </div>
               <div class="border-t border-gray-800 pt-3 mt-3">
                 <div class="flex justify-between">
                   <span class="text-gray-500">Local Port</span>
@@ -338,6 +342,45 @@
                     placeholder="3000">
                 </div>
               </div>
+            </div>
+
+            <!-- URL Link -->
+            <div class="bg-gray-900 rounded-xl p-5 border border-gray-800">
+              <h3 class="font-semibold text-gray-300 mb-4">Quick Access URL</h3>
+              <div>
+                <label class="block text-sm font-medium text-gray-300 mb-2">URL (optional)</label>
+                <input type="url" id="formUrl"
+                  class="w-full bg-gray-950 border border-gray-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-blue-500 transition"
+                  placeholder="http://localhost:8080 or https://admin.example.com">
+                <p class="text-xs text-gray-500 mt-1">Click to open in browser from tunnel details</p>
+              </div>
+            </div>
+
+            <!-- SSH Key Setup Helper -->
+            <div id="sshKeyHelper" class="bg-gray-900 rounded-xl p-5 border border-gray-800">
+              <h3 class="font-semibold text-gray-300 mb-4 flex items-center gap-2">
+                <svg class="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/>
+                </svg>
+                SSH Key Setup Helper
+              </h3>
+              <p class="text-sm text-gray-400 mb-3">
+                To enable key authentication, run this command in your terminal:
+              </p>
+              <div class="bg-gray-950 rounded-lg p-3 border border-gray-700 relative group">
+                <code id="sshCopyIdCommand" class="text-xs font-mono text-green-400 block pr-8 break-all">
+                  ssh-copy-id -p 22 user@example.com
+                </code>
+                <button type="button" id="btnCopySshCommand" class="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 bg-gray-700 hover:bg-gray-600 rounded text-gray-300 transition" title="Copy to clipboard">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                  </svg>
+                </button>
+              </div>
+              <p class="text-xs text-gray-500 mt-2">
+                <span class="text-yellow-400">Note:</span> Windows users need OpenSSH installed or can use 
+                <code class="bg-gray-800 px-1 rounded">type %USERPROFILE%\.ssh\id_rsa.pub | ssh -p 22 user@example.com "cat >> .ssh/authorized_keys"</code>
+              </p>
             </div>
 
             <!-- Options -->

@@ -26,5 +26,21 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   onTunnelLog: (callback) => {
     ipcRenderer.on('tunnel:log', (event, data) => callback(data));
+  },
+  
+  // Tray events
+  onTrayConnectAll: (callback) => {
+    ipcRenderer.on('tray:connect-all', (event) => callback());
+  },
+  onTraySelectTunnel: (callback) => {
+    ipcRenderer.on('tray:select-tunnel', (event, tunnelId) => callback(tunnelId));
+  },
+  
+  // Shell operations
+  openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),
+  
+  // Cleanup listeners
+  removeAllListeners: (channel) => {
+    ipcRenderer.removeAllListeners(channel);
   }
 });
